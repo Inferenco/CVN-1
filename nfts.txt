@@ -1,3 +1,0 @@
-# Add NFT addresses here, one per line
-# Example:
-# 0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
