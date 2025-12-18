@@ -9,6 +9,7 @@
 module cvn1_vault::vault_core {
     use std::option::Option;
     use std::vector;
+    use std::signer;
     use cedra_framework::object::{Self, ExtendRef, DeleteRef, Object};
     use cedra_framework::fungible_asset::{Self, Metadata, FungibleStore, FungibleAsset};
     use cedra_framework::primary_fungible_store;
@@ -53,6 +54,8 @@ module cvn1_vault::vault_core {
     const EMAX_SUPPLY_REACHED: u64 = 11;
     /// Royalty escrow not found for NFT
     const EROYALTY_ESCROW_NOT_FOUND: u64 = 12;
+    /// NFT not found in collection
+    const ENFT_NOT_FOUND: u64 = 13;
     
     /// Maximum basis points (100%)
     const MAX_BPS: u64 = 10000;
@@ -74,6 +77,7 @@ module cvn1_vault::vault_core {
     public fun err_config_not_found(): u64 { ECONFIG_NOT_FOUND }
     public fun err_max_supply_reached(): u64 { EMAX_SUPPLY_REACHED }
     public fun err_royalty_escrow_not_found(): u64 { EROYALTY_ESCROW_NOT_FOUND }
+    public fun err_nft_not_found(): u64 { ENFT_NOT_FOUND }
 
     // ============================================
     // Data Structures
@@ -94,14 +98,16 @@ module cvn1_vault::vault_core {
         mint_price_fa: address,
         /// Allowed FA types for deposits (empty = any FA allowed)
         allowed_assets: vector<address>,
-        /// Address to receive creator payments
-        creator_payout_addr: address,
         /// ExtendRef for collection signer (enables public minting)
         collection_extend_ref: ExtendRef,
         /// Maximum tokens that can be minted (0 = unlimited)
         max_supply: u64,
         /// Current count of minted tokens
         minted_count: u64,
+        /// Address to receive creator payments
+        creator_payout_addr: address,
+        /// Nft Addresses minted belonging to this collection
+        nft_addresses: vector<address>,
     }
 
     /// Per-NFT vault information (v3: Dual Vault Architecture)
@@ -145,21 +151,6 @@ module cvn1_vault::vault_core {
         // ============================================
         /// Address of the collection creator (for config lookup)
         creator_addr: address,
-        /// Track if last sale used vault royalty
-        last_sale_compliant: bool,
-    }
-
-    /// Per-NFT royalty escrow reference (v6: Core Vault Royalties)
-    /// Stored under the NFT's object address.
-    ///
-    /// Royalties are paid to `escrow_addr` (token-level framework royalty payee).
-    /// Anyone can permissionlessly sweep those funds into:
-    /// - creator payout address
-    /// - the NFT's CORE vault
-    struct RoyaltyEscrowRef has key {
-        escrow_addr: address,
-        escrow_extend_ref: ExtendRef,
-        escrow_delete_ref: Option<DeleteRef>,
     }
 
     /// Struct for returning vault balance info in views
@@ -192,17 +183,12 @@ module cvn1_vault::vault_core {
         exists<VaultInfo>(addr)
     }
 
-    /// Check if royalty escrow exists at address
-    public fun royalty_escrow_exists(addr: address): bool {
-        exists<RoyaltyEscrowRef>(addr)
-    }
-
     // ============================================
     // Config Read Functions (return copied values)
     // ============================================
 
     /// Get all config values at once (avoids multiple borrows)
-    public fun get_config_values(addr: address): (u16, u16, u16, u64, address, vector<address>, address) 
+    public fun get_config_values(addr: address): (u16, u16, u16, u64, address, vector<address>, address, vector<address>) 
     acquires VaultedCollectionConfig {
         let config = borrow_global<VaultedCollectionConfig>(addr);
         (
@@ -213,6 +199,7 @@ module cvn1_vault::vault_core {
             config.mint_price_fa,
             config.allowed_assets,
             config.creator_payout_addr,
+            config.nft_addresses,
         )
     }
 
@@ -227,6 +214,28 @@ module cvn1_vault::vault_core {
             config.creator_payout_addr,
         )
     }
+
+    /// ============================================
+    /// v6: Setter Function
+    /// ============================================
+    
+    /// add the nft_address to the nft_addresses vector for a collection
+    public(friend) fun add_nft_addresses(collection_addr: address, nft_address: address)
+    acquires VaultedCollectionConfig {
+        let config = borrow_global_mut<VaultedCollectionConfig>(collection_addr);
+        vector::push_back(&mut config.nft_addresses, nft_address);
+    }
+
+    /// remove the nft_address from the nft_addresses vector for a collection
+    public(friend) fun remove_nft_addresses(collection_addr: address, nft_address: address)
+    acquires VaultedCollectionConfig {
+        let config = borrow_global_mut<VaultedCollectionConfig>(collection_addr);
+        let (found, index) = vector::find(&config.nft_addresses, |addr| addr == &nft_address);
+        assert!(found, err_nft_not_found());
+        
+        vector::remove(&mut config.nft_addresses, index);
+    }
+
 
     // ============================================
     // v4: Supply Tracking Functions
@@ -265,22 +274,16 @@ module cvn1_vault::vault_core {
     // ============================================
 
     /// Get vault info for views (v3: returns core redeemable status)
-    public fun get_vault_info_for_view(addr: address): (bool, address, bool)
+    public fun get_vault_info_for_view(addr: address): (bool, address)
     acquires VaultInfo {
         let vault = borrow_global<VaultInfo>(addr);
-        (vault.is_core_redeemable, vault.creator_addr, vault.last_sale_compliant)
+        (vault.is_core_redeemable, vault.creator_addr)
     }
 
     /// Check if core vault is redeemable
     public fun is_vault_redeemable(addr: address): bool acquires VaultInfo {
         let vault = borrow_global<VaultInfo>(addr);
         vault.is_core_redeemable
-    }
-
-    /// Get vault compliance status
-    public fun get_vault_compliance(addr: address): bool acquires VaultInfo {
-        let vault = borrow_global<VaultInfo>(addr);
-        vault.last_sale_compliant
     }
 
     /// Get CORE vault balances for views
@@ -401,6 +404,7 @@ module cvn1_vault::vault_core {
             collection_extend_ref,
             max_supply,
             minted_count: 0,
+            nft_addresses: vector::empty(),
         });
     }
 
@@ -430,7 +434,6 @@ module cvn1_vault::vault_core {
             
             // Metadata
             creator_addr,
-            last_sale_compliant: false,
         });
     }
 
@@ -550,100 +553,6 @@ module cvn1_vault::vault_core {
         claimed_assets
     }
 
-    /// Set vault compliance status
-    public(friend) fun set_vault_compliance(nft_addr: address, compliant: bool) acquires VaultInfo {
-        let vault = borrow_global_mut<VaultInfo>(nft_addr);
-        vault.last_sale_compliant = compliant;
-    }
-
-    // ============================================
-    // v6: Royalty Escrow + Sweep (friend-only)
-    // ============================================
-
-    /// Store an NFT's royalty escrow reference (called during mint).
-    public(friend) fun store_royalty_escrow_ref(
-        nft_signer: &signer,
-        escrow_addr: address,
-        escrow_extend_ref: ExtendRef,
-        escrow_delete_ref: Option<DeleteRef>,
-    ) {
-        move_to(nft_signer, RoyaltyEscrowRef {
-            escrow_addr,
-            escrow_extend_ref,
-            escrow_delete_ref,
-        });
-    }
-
-    /// Return the royalty escrow address, aborting if missing.
-    public(friend) fun royalty_escrow_address(nft_addr: address): address
-    acquires RoyaltyEscrowRef {
-        assert!(exists<RoyaltyEscrowRef>(nft_addr), err_royalty_escrow_not_found());
-        borrow_global<RoyaltyEscrowRef>(nft_addr).escrow_addr
-    }
-
-    /// Sweep all available royalties from escrow into:
-    /// - creator payout address (config)
-    /// - NFT CORE vault (config)
-    ///
-    /// Returns: (gross_swept, creator_cut, vault_cut, escrow_addr)
-    public(friend) fun sweep_royalty_to_core_vault(
-        nft_addr: address,
-        collection_addr: address,
-        fa_metadata: Object<Metadata>,
-    ): (u64, u64, u64, address)
-    acquires VaultedCollectionConfig, VaultInfo, RoyaltyEscrowRef {
-        if (!exists<RoyaltyEscrowRef>(nft_addr)) {
-            return (0, 0, 0, @0x0)
-        };
-
-        let escrow = borrow_global<RoyaltyEscrowRef>(nft_addr);
-        let escrow_addr = escrow.escrow_addr;
-
-        let amount = primary_fungible_store::balance(escrow_addr, fa_metadata);
-        if (amount == 0) {
-            return (0, 0, 0, escrow_addr)
-        };
-
-        let config = borrow_global<VaultedCollectionConfig>(collection_addr);
-        let creator_bps = config.creator_royalty_bps as u64;
-        let vault_bps = config.vault_royalty_bps as u64;
-        let total_bps = creator_bps + vault_bps;
-        if (total_bps == 0) {
-            // No royalty configuration; nothing to do.
-            return (0, 0, 0, escrow_addr)
-        };
-
-        // Withdraw full balance from escrow
-        let escrow_signer = object::generate_signer_for_extending(&escrow.escrow_extend_ref);
-        let payment = primary_fungible_store::withdraw(&escrow_signer, fa_metadata, amount);
-
-        // Split by absolute royalty bps proportions:
-        // royalty_amount == sale_price * (creator_bps + vault_bps) / 10_000
-        // vault_cut     == sale_price * vault_bps / 10_000
-        // => vault_cut  == royalty_amount * vault_bps / (creator_bps + vault_bps)
-        let vault_cut = if (vault_bps > 0) {
-            math64::mul_div(amount, vault_bps, total_bps)
-        } else {
-            0
-        };
-        let creator_cut = amount - vault_cut;
-
-        // CORE vault gets its cut
-        if (vault_cut > 0) {
-            let vault_payment = fungible_asset::extract(&mut payment, vault_cut);
-            deposit_to_core_vault(nft_addr, fa_metadata, vault_payment);
-        };
-
-        // Creator payout gets the remainder
-        if (fungible_asset::amount(&payment) > 0) {
-            primary_fungible_store::deposit(config.creator_payout_addr, payment);
-        } else {
-            fungible_asset::destroy_zero(payment);
-        };
-
-        (amount, creator_cut, vault_cut, escrow_addr)
-    }
-
     /// Move vault out for burn_and_redeem (destructive)
     /// Returns: (extend_ref, burn_ref, delete_ref, core_stores, core_delete_refs, rewards_stores, rewards_delete_refs)
     /// delete_ref may be None for named tokens that don't support deletion
@@ -667,9 +576,73 @@ module cvn1_vault::vault_core {
             delete_ref,
             burn_ref,
             creator_addr: _,
-            last_sale_compliant: _,
         } = move_from<VaultInfo>(nft_addr);
         
         (extend_ref, burn_ref, delete_ref, core_stores, core_delete_refs, rewards_stores, rewards_delete_refs)
+    }
+
+    // ============================================
+    // Entry Functions - Distribute Royalties
+    // ============================================
+
+    /// Distribute royalties to the core vault
+    public(friend) fun distribute_royalties(
+        creator: &signer,
+        collection_addr: address,
+        fa_addr: address,
+    ) acquires VaultedCollectionConfig, VaultInfo {
+        // Get collection signer first to avoid borrow conflict with config
+        let collection_signer = get_collection_signer(collection_addr);
+
+        let creator_addr = signer::address_of(creator);
+        let config = borrow_global<VaultedCollectionConfig>(collection_addr);
+        assert!(config.creator_payout_addr == creator_addr, err_not_creator());
+
+        let fa_metadata = object::address_to_object<Metadata>(fa_addr);
+
+        let creator_cut = config.creator_royalty_bps;
+        let vault_cut = config.vault_royalty_bps;
+
+        let collection_balance = primary_fungible_store::balance(collection_addr, fa_metadata);
+        assert!(collection_balance > 0, err_invalid_amount());
+
+        // Calculate creator cut amount
+        let creator_cut_amount = math64::mul_div(collection_balance, (creator_cut as u64), 10000);
+        
+        // Calculate vault cut amount to be split among NFTs
+        let vault_cut_amount = math64::mul_div(collection_balance, (vault_cut as u64), 10000);
+
+        // Withdraw and send creator's share
+        if (creator_cut_amount > 0) {
+            let creator_fa = primary_fungible_store::withdraw(&collection_signer, fa_metadata, creator_cut_amount);
+            primary_fungible_store::deposit(config.creator_payout_addr, creator_fa);
+        };
+
+        let nft_count = vector::length(&config.nft_addresses);
+        // Split vault cut among all NFT addresses
+        if (nft_count > 0 && vault_cut_amount > 0) {
+            // Calculate per-NFT share
+            let per_nft_share = vault_cut_amount / nft_count;
+
+            vector::for_each(config.nft_addresses, |nft_addr| {
+
+                let (found, i) = vector::index_of(&config.nft_addresses, &nft_addr);
+                assert!(found, err_nft_not_found());
+
+                let nft_share = if (i == (nft_count - 1)){
+                    let amount_left = primary_fungible_store::balance(collection_addr, fa_metadata);
+                    amount_left
+                } else {
+                    per_nft_share
+                };
+                
+                if (nft_share > 0) {
+                    // Withdraw this NFT's share from collection
+                    let nft_fa = primary_fungible_store::withdraw(&collection_signer, fa_metadata, nft_share);
+                    // Deposit to this NFT's rewards vault
+                    deposit_to_rewards_vault(nft_addr, fa_metadata, nft_fa);
+                };
+            });
+        };
     }
 }

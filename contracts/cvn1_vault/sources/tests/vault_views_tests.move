@@ -36,21 +36,12 @@ module cvn1_vault::vault_views_tests {
     }
 
     // ============================================
-    // last_sale_used_vault_royalty tests
-    // ============================================
-
-    #[test]
-    fun test_last_sale_compliance_nonexistent() {
-        assert!(!vault_views::last_sale_used_vault_royalty(@0x999), 0);
-    }
-
-    // ============================================
     // get_vault_info tests
     // ============================================
 
     #[test]
     #[expected_failure(abort_code = 8, location = cvn1_vault::vault_views)]
     fun test_get_vault_info_not_found() {
-        let (_, _, _) = vault_views::get_vault_info(@0x999);
+        let (_, _) = vault_views::get_vault_info(@0x999);
     }
 }

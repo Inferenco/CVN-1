@@ -100,66 +100,6 @@ module cvn1_vault::vault_ops {
     }
 
     // ============================================
-    // Entry Functions - Royalty Sweep (v6)
-    // ============================================
-
-    /// Permissionlessly sweep royalties for a vaulted NFT into:
-    /// - creator payout address (collection config)
-    /// - the NFT's CORE vault (collection config)
-    ///
-    /// Royalties must have been paid to the NFT's royalty escrow address.
-    public entry fun sweep_royalty_to_core_vault(
-        caller: &signer,
-        nft_object: Object<Token>,
-        fa_metadata: Object<Metadata>,
-    ) {
-        let nft_addr = object::object_address(&nft_object);
-
-        // If the NFT wasn't minted with a royalty escrow, treat as no-op.
-        if (!vault_core::royalty_escrow_exists(nft_addr)) {
-            return
-        };
-
-        let collection = token::collection_object(nft_object);
-        let collection_addr = object::object_address(&collection);
-
-        let (gross, creator_cut, vault_cut, escrow_addr) =
-            vault_core::sweep_royalty_to_core_vault(nft_addr, collection_addr, fa_metadata);
-
-        if (gross > 0) {
-            let fa_addr = object::object_address(&fa_metadata);
-            vault_events::emit_royalty_swept(
-                nft_addr,
-                fa_addr,
-                gross,
-                creator_cut,
-                vault_cut,
-                escrow_addr,
-                signer::address_of(caller),
-            );
-        };
-    }
-
-    /// Batch sweep royalties for multiple vaulted NFTs (v6).
-    ///
-    /// This is equivalent to calling `sweep_royalty_to_core_vault` once per NFT address,
-    /// but can reduce per-sweep overhead by batching into a single transaction.
-    public entry fun sweep_royalty_to_core_vault_many(
-        caller: &signer,
-        nft_addrs: vector<address>,
-        fa_metadata: Object<Metadata>,
-    ) {
-        let i = 0;
-        let len = vector::length(&nft_addrs);
-        while (i < len) {
-            let nft_addr = *vector::borrow(&nft_addrs, i);
-            let nft_object = object::address_to_object<Token>(nft_addr);
-            sweep_royalty_to_core_vault(caller, nft_object, fa_metadata);
-            i = i + 1;
-        };
-    }
-
-    // ============================================
     // Entry Functions - Rewards Claim
     // ============================================
 
@@ -300,5 +240,18 @@ module cvn1_vault::vault_ops {
         } else {
             option::destroy_none(delete_ref_opt);
         };
+    }
+
+    // ============================================
+    // Entry Functions - Distribute Royalties
+    // ============================================
+
+    /// Distribute royalties to the core vault
+    public entry fun distribute_royalties(
+        caller: &signer,
+        collection_addr: address,
+        fa_addr: address,
+    ) {
+        vault_core::distribute_royalties(caller, collection_addr, fa_addr);
     }
 }

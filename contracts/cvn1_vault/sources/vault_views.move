@@ -5,8 +5,6 @@ module cvn1_vault::vault_views {
     use std::string::String;
     
     use cedra_framework::object::Object;
-    use cedra_framework::fungible_asset::Metadata;
-    use cedra_framework::primary_fungible_store;
     use cedra_token_objects::token::{Self, Token};
     
     use cvn1_vault::vault_core::{Self, VaultBalance};
@@ -51,47 +49,9 @@ module cvn1_vault::vault_views {
     }
 
     #[view]
-    /// Check if a royalty escrow exists for an NFT (v6)
-    public fun royalty_escrow_exists(nft_addr: address): bool {
-        vault_core::royalty_escrow_exists(nft_addr)
-    }
-
-    #[view]
-    /// Get the royalty escrow address for an NFT (v6)
-    /// Returns @0x0 if not configured.
-    public fun get_royalty_escrow_address(nft_addr: address): address {
-        if (!vault_core::royalty_escrow_exists(nft_addr)) {
-            return @0x0
-        };
-        vault_core::royalty_escrow_address(nft_addr)
-    }
-
-    #[view]
-    /// Get the royalty escrow balance for an NFT in a given FA (v6)
-    public fun get_royalty_escrow_balance(
-        nft_addr: address,
-        fa_metadata: Object<Metadata>,
-    ): u64 {
-        if (!vault_core::royalty_escrow_exists(nft_addr)) {
-            return 0
-        };
-        let escrow_addr = vault_core::royalty_escrow_address(nft_addr);
-        primary_fungible_store::balance(escrow_addr, fa_metadata)
-    }
-
-    #[view]
-    /// Check if last sale used vault royalty (compliance tracking)
-    public fun last_sale_used_vault_royalty(nft_addr: address): bool {
-        if (!vault_core::vault_exists(nft_addr)) {
-            return false
-        };
-        vault_core::get_vault_compliance(nft_addr)
-    }
-
-    #[view]
     /// Get vault info details
     /// Returns (is_redeemable, creator_addr, last_sale_compliant)
-    public fun get_vault_info(nft_addr: address): (bool, address, bool) {
+    public fun get_vault_info(nft_addr: address): (bool, address) {
         assert!(vault_core::vault_exists(nft_addr), vault_core::err_vault_not_found());
         vault_core::get_vault_info_for_view(nft_addr)
     }
@@ -114,11 +74,11 @@ module cvn1_vault::vault_views {
     /// Returns (asset_count, total_asset_types, is_redeemable, is_compliant)
     /// 
     /// Useful for displaying vault status at a glance.
-    public fun get_vault_summary(nft_addr: address): (u64, u64, bool, bool) {
+    public fun get_vault_summary(nft_addr: address): (u64, u64, bool) {
         assert!(vault_core::vault_exists(nft_addr), vault_core::err_vault_not_found());
         
         let balances = vault_core::get_vault_balances(nft_addr);
-        let (is_redeemable, _creator_addr, is_compliant) = vault_core::get_vault_info_for_view(nft_addr);
+        let (is_redeemable, _creator_addr) = vault_core::get_vault_info_for_view(nft_addr);
         
         // Count total assets and non-zero balances
         let total_types = std::vector::length(&balances);
@@ -132,7 +92,7 @@ module cvn1_vault::vault_views {
             i = i + 1;
         };
         
-        (non_zero_count, total_types, is_redeemable, is_compliant)
+        (non_zero_count, total_types, is_redeemable)
     }
 
     // ============================================

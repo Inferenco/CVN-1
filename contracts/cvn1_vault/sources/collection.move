@@ -32,7 +32,6 @@ module cvn1_vault::collection {
         mint_price: u64,
         mint_price_fa: address,
         allowed_assets: vector<address>,
-        creator_payout_addr: address,
         max_supply: u64  // 0 = unlimited
     ) {
         // Check if collection already exists for this creator with this name
@@ -63,7 +62,7 @@ module cvn1_vault::collection {
             option::some(royalty::create(
                 (creator_royalty_bps as u64),
                 10000,  // denominator (basis points)
-                creator_payout_addr
+                collection_addr
             ))
         } else {
             option::none()
@@ -96,7 +95,7 @@ module cvn1_vault::collection {
             mint_price,
             mint_price_fa,
             allowed_assets,
-            creator_payout_addr,
+            creator_addr,
             collection_extend_ref,
             max_supply,
         );
