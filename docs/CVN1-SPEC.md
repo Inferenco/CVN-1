@@ -1,21 +1,22 @@
-# CVN-1: Cedra Vaulted NFT Standard (v5)
+# CVN-1: Cedra Vaulted NFT Standard (v6)
 
 > A standard for NFTs with dual built-in fungible asset vaults on Cedra Network.
 
 ## Overview
 
-CVN-1 v5 features a **dual vault architecture** with **framework royalty integration** for automatic marketplace enforcement:
+CVN-1 v6 features a **dual vault architecture** with **framework royalties** and a **permissionless royalty sweep** into the traded NFT’s **Core Vault**:
 
 | Vault | Purpose | Redemption |
 |-------|---------|------------|
 | **Core Vault** | Long-term value (mint seed, staking) | Burn NFT only |
 | **Rewards Vault** | Short-term value (deposits, gaming) | Claim anytime |
 
-### v5 Changes
+### v6 Changes
 
-- **Framework Royalties** — Uses `cedra_token_objects::royalty` for automatic marketplace discovery
-- **Simplified Royalties** — Creator royalty only, enforced by Cedra framework
-- **Removed** — `royalties.move` and `settle_sale_with_vault_royalty` (no longer needed)
+- **Framework Royalties** — Royalties are set via `cedra_token_objects::royalty`
+- **Per-NFT Royalty Escrow** — Token-level royalty payee is a dedicated escrow address per NFT
+- **Core Vault Royalties** — `vault_royalty_bps` is used to route a share of royalties into the NFT’s Core Vault
+- **Permissionless Sweep** — `vault_ops::sweep_royalty_to_core_vault` splits escrowed funds → creator payout + Core Vault
 
 This enables:
 - **Floor Value** — Core vault defines minimum intrinsic value
@@ -45,13 +46,13 @@ Stored on the collection object's address:
 ```move
 struct VaultedCollectionConfig has key {
     creator_royalty_bps: u16,      // Creator royalty (set via framework)
-    vault_royalty_bps: u16,        // Unused in v5 (kept for compatibility)
+    vault_royalty_bps: u16,        // Core vault royalty (funds Core Vault via sweep)
     mint_vault_bps: u16,           // % of mint price to Core Vault
     mint_price: u64,
     mint_price_fa: address,
     allowed_assets: vector<address>,
     creator_payout_addr: address,
-    extend_ref: ExtendRef,         // For collection signer
+    collection_extend_ref: ExtendRef, // For collection signer
     max_supply: u64,               // 0 = unlimited
     minted_count: u64,
 }
@@ -83,6 +84,18 @@ struct VaultInfo has key {
 }
 ```
 
+### RoyaltyEscrowRef (v6)
+
+Stored on each NFT's object address (additive v6 resource):
+
+```move
+struct RoyaltyEscrowRef has key {
+    escrow_addr: address,
+    escrow_extend_ref: ExtendRef,
+    escrow_delete_ref: Option<DeleteRef>,
+}
+```
+
 ## Entry Functions
 
 ### Collection Setup
@@ -94,7 +107,7 @@ public entry fun init_collection_config(
     collection_description: String,
     collection_uri: String,
     creator_royalty_bps: u16,      // Framework royalty (enforced by marketplaces)
-    vault_royalty_bps: u16,        // Unused in v5, pass 0
+    vault_royalty_bps: u16,        // Core vault royalty bps (secondary sales)
     mint_vault_bps: u16,           // % of mint to Core Vault
     mint_price: u64,
     mint_price_fa: address,
@@ -109,7 +122,7 @@ public entry fun init_collection_config(
 ```move
 // All mint functions:
 // 1. Seed the CORE vault with mint_vault_bps %
-// 2. Inherit royalty from collection (v5)
+// 2. Create per-NFT royalty escrow and set token-level royalty payee to escrow (v6)
 
 public entry fun creator_mint_vaulted_nft(...)
 public entry fun creator_self_mint(...)
@@ -135,6 +148,20 @@ public entry fun deposit_to_rewards_vault(
     amount: u64
 )
 
+// Permissionlessly sweep escrowed royalties → creator payout + Core Vault (v6)
+public entry fun sweep_royalty_to_core_vault(
+    caller: &signer,
+    nft_object: Object<Token>,
+    fa_metadata: Object<Metadata>,
+)
+
+// Batch sweep royalties for many NFTs in one transaction (v6)
+public entry fun sweep_royalty_to_core_vault_many(
+    caller: &signer,
+    nft_addrs: vector<address>,
+    fa_metadata: Object<Metadata>,
+)
+
 // Claim rewards without burning NFT
 public entry fun claim_rewards(
     owner: &signer,
@@ -148,20 +175,27 @@ public entry fun burn_and_redeem(
 )
 ```
 
-## Royalty Model (v5)
+## Royalty Model (v6)
 
 ### Framework Royalties
 
-CVN-1 v5 uses **Cedra Framework royalties** (`cedra_token_objects::royalty`):
+CVN-1 v6 uses **Cedra Framework royalties** (`cedra_token_objects::royalty`) with a per-NFT escrow payee:
 
 | Royalty Type | Recipient | Enforcement |
 |--------------|-----------|-------------|
-| **Creator Royalty** | `creator_payout_addr` | Automatic via framework |
+| **Creator Royalty** | `creator_payout_addr` | Paid on sweep |
+| **Core Vault Royalty** | NFT Core Vault | Paid on sweep |
 
-Marketplaces supporting Cedra's standard royalty API will automatically:
-1. Discover the royalty rate from the collection/token
-2. Enforce payment to the creator's payout address
-3. No custom settlement function needed
+Marketplaces supporting Cedra’s standard royalty API will:
+1. Discover the royalty rate from the token (preferred) or collection
+2. Pay the royalty amount to the discovered `payee_address`
+
+In CVN-1 v6, minted tokens set token-level royalty to:
+- `numerator = creator_royalty_bps + vault_royalty_bps`
+- `denominator = 10000`
+- `payee_address = per-NFT escrow address`
+
+Then anyone can call `vault_ops::sweep_royalty_to_core_vault` to split the escrow balance proportionally by `creator_royalty_bps` and `vault_royalty_bps`, depositing the vault cut into the NFT’s Core Vault.
 
 ### Vault Value Sources
 
@@ -183,6 +217,9 @@ Vaults receive value from:
 | `get_rewards_vault_balances(nft_addr)` | Rewards vault only |
 | `get_vault_config(collection_addr)` | Config tuple |
 | `vault_exists(nft_addr)` | `bool` |
+| `royalty_escrow_exists(nft_addr)` | `bool` |
+| `get_royalty_escrow_address(nft_addr)` | `address` |
+| `get_royalty_escrow_balance(nft_addr, fa_metadata)` | `u64` |
 | `get_vault_info(nft_addr)` | `(is_redeemable, creator, compliant)` |
 | `get_token_metadata(nft_object)` | `(name, description, uri)` |
 | `get_collection_address(creator, name)` | `address` |
@@ -202,6 +239,7 @@ Vaults receive value from:
 | 9 | `EINVALID_ROYALTY_BPS` | Royalty BPS > 10000 |
 | 10 | `ECONFIG_NOT_FOUND` | Collection config not found |
 | 11 | `EMAX_SUPPLY_REACHED` | Max supply reached |
+| 12 | `EROYALTY_ESCROW_NOT_FOUND` | Royalty escrow not found for NFT |
 
 ## Events
 
@@ -209,17 +247,17 @@ Vaults receive value from:
 #[event] struct VaultedNFTMinted { nft_addr, collection_addr, creator, to, is_redeemable }
 #[event] struct VaultDeposited { nft_addr, fa_type, amount, depositor }
 #[event] struct VaultRedeemed { nft_addr, redeemer, redeemed_assets }
+#[event] struct RoyaltySweptToCore { nft_addr, fa_type, gross_amount, creator_cut, core_vault_cut, escrow_addr, sweeper }
 #[event] struct RewardsClaimed { nft_addr, claimer, assets_claimed }
 ```
 
-## Migration from v3/v4
+## Migration Notes
 
 If upgrading from earlier versions:
 
-1. **Royalties** — Now handled by Cedra framework, no custom settlement needed
-2. **`vault_royalty_bps`** — Pass 0, this field is ignored
-3. **`royalties.move`** — Module removed, marketplaces use framework royalties
-4. **`settle_sale_with_vault_royalty`** — Function removed
+1. **Royalties** — No custom settlement function is required; royalties are enforced via the Cedra framework
+2. **`vault_royalty_bps`** — Used again in v6 to fund the NFT Core Vault via sweep
+3. **Existing NFTs** — NFTs minted before v6 won’t have a per-NFT escrow unless re-minted or explicitly upgraded (if possible)
 
 ## License
 

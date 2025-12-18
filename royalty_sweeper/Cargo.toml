@@ -1,0 +1,17 @@
+[package]
+name = "cvn1_royalty_sweeper"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive", "env"] }
+dotenvy = "0.15"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
+url = "2"
+
+cedra-sdk = { git = "https://github.com/cedra-labs/cedra-network", branch = "testnet" }
+
+[patch.crates-io]
+merlin = { git = "https://github.com/cedra-labs/merlin" }
+

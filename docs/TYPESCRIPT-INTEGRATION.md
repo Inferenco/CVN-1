@@ -1,4 +1,4 @@
-# CVN-1 TypeScript Integration Guide (v5)
+# CVN-1 TypeScript Integration Guide (v6)
 
 > Examples using `@cedra-labs/ts-sdk` to interact with CVN-1 dual vault NFTs.
 
@@ -16,7 +16,7 @@ const CVN1_ADDRESS = "0x..."; // Your deployed CVN-1 address
 const CEDRA_FA = "0x000000000000000000000000000000000000000000000000000000000000000a";
 ```
 
-## Creating a Collection (v5)
+## Creating a Collection (v6)
 
 ```typescript
 async function createCollection(creator: Account) {
@@ -28,8 +28,8 @@ async function createCollection(creator: Account) {
         "My Vaulted Collection",
         "A collection with dual vaults",
         "https://example.com/meta",
-        500,   // creator_royalty_bps (5% - enforced by framework)
-        0,     // vault_royalty_bps (unused in v5, pass 0)
+        500,   // creator_royalty_bps (5%)
+        500,   // vault_royalty_bps (5% routed into NFT core vault via sweep)
         5000,  // mint_vault_bps (50% → core vault)
         1000000, // mint_price in octas
         CEDRA_FA,
@@ -59,7 +59,7 @@ async function createCollection(creator: Account) {
 ```typescript
 async function publicMint(buyer: Account, collectionAddr: string) {
   // mint_vault_bps % of mint price goes to CORE vault
-  // NFT inherits framework royalty from collection (v5)
+  // v6: mint creates a per-NFT royalty escrow and sets token-level royalty payee to that escrow
   const txn = await cedra.transaction.build.simple({
     sender: buyer.accountAddress,
     data: {
@@ -75,6 +75,25 @@ async function publicMint(buyer: Account, collectionAddr: string) {
   });
 
   const result = await cedra.signAndSubmitTransaction({ signer: buyer, transaction: txn });
+  return result.hash;
+}
+```
+
+## Royalty Sweep (v6)
+
+Royalties are paid to the NFT’s escrow address (token-level framework royalty payee). Anyone can sweep those funds into creator payout + Core Vault:
+
+```typescript
+async function sweepRoyaltiesToCoreVault(sweeper: Account, nftAddr: string, faMetadataAddr: string) {
+  const txn = await cedra.transaction.build.simple({
+    sender: sweeper.accountAddress,
+    data: {
+      function: `${CVN1_ADDRESS}::vault_ops::sweep_royalty_to_core_vault`,
+      functionArguments: [nftAddr, faMetadataAddr],
+    },
+  });
+
+  const result = await cedra.signAndSubmitTransaction({ signer: sweeper, transaction: txn });
   return result.hash;
 }
 ```
@@ -208,9 +227,9 @@ async function vaultExists(nftAddr: string): Promise<boolean> {
 }
 ```
 
-## Royalties (v5)
+## Royalties (v6)
 
-In v5, royalties are handled by the **Cedra Framework** automatically. Marketplaces discover royalties via the standard API:
+In v6, royalties are handled by the **Cedra Framework** (discovery + enforcement), with a per-NFT escrow payee. The `payee_address` returned for a token is the escrow address.
 
 ```typescript
 async function getFrameworkRoyalty(tokenOrCollectionAddr: string) {
@@ -233,7 +252,7 @@ async function getFrameworkRoyalty(tokenOrCollectionAddr: string) {
 }
 ```
 
-> **Note:** Custom `settle_sale_with_vault_royalty` was removed in v5. Use standard marketplace settlement with framework royalty enforcement.
+> **Note:** Custom `settle_sale_with_vault_royalty` was removed in v5 and remains removed. Use standard marketplace settlement with framework royalty enforcement + sweep.
 
 ## Summary
 
@@ -242,11 +261,11 @@ async function getFrameworkRoyalty(tokenOrCollectionAddr: string) {
 | Mint | `public_mint` | Core |
 | Deposit long-term | `deposit_to_core_vault` | Core |
 | Deposit short-term | `deposit_to_rewards_vault` | Rewards |
+| Sweep royalties | `sweep_royalty_to_core_vault` | Core |
 | Claim rewards | `claim_rewards` | Rewards |
 | Burn & redeem | `burn_and_redeem` | Both |
 
-## v5 Migration Notes
+## Notes
 
-- `vault_royalty_bps` parameter is ignored - pass 0
-- Royalties are now framework-enforced, no custom settlement needed
-- `settle_sale_with_vault_royalty` was removed
+- `vault_royalty_bps` is used in v6 to route a share of secondary-sale royalties into the NFT’s Core Vault (via sweep).
+- `settle_sale_with_vault_royalty` remains removed; use framework royalties + sweep instead.

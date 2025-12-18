@@ -1,7 +1,7 @@
 import { Cedra, CedraConfig, Network } from "@cedra-labs/ts-sdk";
 
-// CVN-1 v5.0 Contract address on testnet (framework royalty integration)
-export const CVN1_ADDRESS = "0x1d13274573abe42384a4b69c07bf043712c58d48d7c9759b6616d4a4bc1fb5f7";
+// CVN-1 v6.0 Contract address on testnet
+export const CVN1_ADDRESS = "0xe4ff087a33a936e58efeb9601b6b50c4c83872b968e5bf61444326c2c13d115b";
 
 // Initialize Cedra client for testnet
 const config = new CedraConfig({ network: Network.TESTNET });

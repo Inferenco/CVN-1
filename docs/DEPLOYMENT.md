@@ -1,8 +1,8 @@
 # CVN-1 Testnet Deployment
 
-## Current Version: 2.0.0 (Modular Architecture)
+## Current Version: 6.0.0
 
-> **Note:** v2.0.0 introduces a modular architecture. Deploy with the new profile.
+> **Note:** This repo uses a modular Move package. Use your configured Cedra CLI profile.
 
 ## Deployment Command
 
@@ -11,9 +11,9 @@
 cedra move publish --profile cvn1_v2 --named-addresses cvn1_vault=cvn1_v2
 ```
 
-## v2.0.0 Modules
+## Modules
 
-The monolithic `vaulted_collection.move` has been split into 7 focused modules:
+The CVN-1 Move package is split into focused modules:
 
 | Module | Description |
 |--------|-------------|
@@ -22,24 +22,22 @@ The monolithic `vaulted_collection.move` has been split into 7 focused modules:
 | `collection` | Collection initialization |
 | `minting` | All mint variants |
 | `vault_ops` | Deposit, burn/redeem operations |
-| `royalties` | Sale settlement with vault royalties |
 | `vault_views` | Read-only view functions |
 
-## Entry Functions (v2)
+## Entry Functions
 
 | Module | Function |
 |--------|----------|
 | `collection` | `init_collection_config` |
 | `minting` | `creator_mint_vaulted_nft`, `creator_self_mint`, `public_mint` |
-| `vault_ops` | `deposit_to_vault`, `burn_and_redeem` |
-| `royalties` | `settle_sale_with_vault_royalty`, `mark_non_compliant_transfer` |
+| `vault_ops` | `deposit_to_core_vault`, `deposit_to_rewards_vault`, `claim_rewards`, `burn_and_redeem`, `sweep_royalty_to_core_vault` |
 
-## View Functions (v2)
+## View Functions
 
 | Module | Function |
 |--------|----------|
 | `collection` | `get_collection_address` |
-| `vault_views` | `get_vault_balances`, `get_vault_config`, `vault_exists`, `last_sale_used_vault_royalty`, `get_vault_info`, `get_token_metadata`, `get_vault_summary` |
+| `vault_views` | `get_vault_balances`, `get_core_vault_balances`, `get_rewards_vault_balances`, `get_vault_config`, `vault_exists`, `royalty_escrow_exists`, `get_royalty_escrow_address`, `get_royalty_escrow_balance`, `last_sale_used_vault_royalty`, `get_vault_info`, `get_token_metadata`, `get_vault_summary`, `get_collection_supply`, `can_mint` |
 
 ---
 

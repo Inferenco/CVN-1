@@ -32,7 +32,6 @@ module cvn1_vault::collection {
         mint_price: u64,
         mint_price_fa: address,
         allowed_assets: vector<address>,
-        creator_payout_addr: address,
         max_supply: u64  // 0 = unlimited
     ) {
         // Check if collection already exists for this creator with this name
@@ -55,13 +54,15 @@ module cvn1_vault::collection {
             vault_core::err_invalid_royalty_bps()
         );
         
-        // Create framework royalty for marketplace discovery (v5)
-        // Only creator_royalty_bps is used - vault receives value from other sources
+        // Create collection-level framework royalty for marketplace discovery.
+        // NOTE: CVN-1 v6 uses token-level royalties (set at mint) to route the full
+        // (creator + core vault) royalty into a per-NFT escrow. Collection-level royalty
+        // remains creator-only as a fallback for non-token-aware indexers/marketplaces.
         let royalty_opt = if (creator_royalty_bps > 0) {
             option::some(royalty::create(
                 (creator_royalty_bps as u64),
                 10000,  // denominator (basis points)
-                creator_payout_addr
+                collection_addr
             ))
         } else {
             option::none()
@@ -94,7 +95,7 @@ module cvn1_vault::collection {
             mint_price,
             mint_price_fa,
             allowed_assets,
-            creator_payout_addr,
+            creator_addr,
             collection_extend_ref,
             max_supply,
         );

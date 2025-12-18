@@ -13,7 +13,8 @@ interface CollectionConfig {
     name: string;
     description: string;
     uri: string;
-    creatorRoyaltyBps: number;  // v5: This is the only royalty used now
+    creatorRoyaltyBps: number;
+    vaultRoyaltyBps: number;
     mintVaultBps: number;
     mintPrice: number;
     isRedeemable: boolean;
@@ -26,7 +27,8 @@ export default function CreatePage() {
         name: "My Vaulted Collection",
         description: "NFTs with built-in dual vaults",
         uri: "https://example.com/collection.json",
-        creatorRoyaltyBps: 500,  // v5: 5% default (goes to creator wallet)
+        creatorRoyaltyBps: 250,
+        vaultRoyaltyBps: 250,
         mintVaultBps: 5000,
         mintPrice: 50,
         isRedeemable: true,
@@ -54,7 +56,7 @@ export default function CreatePage() {
                 config.description,
                 config.uri,
                 config.creatorRoyaltyBps,
-                0,  // v5: vaultRoyaltyBps no longer used (set to 0)
+                config.vaultRoyaltyBps,
                 config.mintVaultBps,
                 BigInt(Math.floor(config.mintPrice * 1e8)),
                 CEDRA_FA,
@@ -85,6 +87,7 @@ export default function CreatePage() {
 
     const vaultAmount = (config.mintPrice * config.mintVaultBps) / 10000;
     const creatorAmount = config.mintPrice - vaultAmount;
+    const totalRoyaltyBps = config.creatorRoyaltyBps + config.vaultRoyaltyBps;
 
     return (
         <main className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
@@ -94,7 +97,7 @@ export default function CreatePage() {
                     <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
                         <span className="text-2xl">💎</span>
                         <span className="text-xl font-bold bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent">
-                            CVN-1 v5
+                            CVN-1 v6
                         </span>
                     </Link>
                     <div className="flex items-center gap-4">
@@ -228,7 +231,31 @@ export default function CreatePage() {
                                             onChange={e => setConfig({ ...config, creatorRoyaltyBps: Number(e.target.value) })}
                                             className="w-full accent-blue-500"
                                         />
-                                        <p className="text-xs text-slate-500 mt-1">Royalty paid to creator on secondary sales</p>
+                                        <p className="text-xs text-slate-500 mt-1">Creator portion (paid on sweep)</p>
+                                    </div>
+
+                                    <div>
+                                        <div className="flex justify-between mb-2">
+                                            <label className="text-sm text-slate-400">Core Vault Royalty</label>
+                                            <span className="text-sm font-medium text-white">{config.vaultRoyaltyBps / 100}%</span>
+                                        </div>
+                                        <input
+                                            type="range"
+                                            min="0"
+                                            max="1000"
+                                            step="25"
+                                            value={config.vaultRoyaltyBps}
+                                            onChange={e => setConfig({ ...config, vaultRoyaltyBps: Number(e.target.value) })}
+                                            className="w-full accent-emerald-500"
+                                        />
+                                        <p className="text-xs text-slate-500 mt-1">Vault portion (swept into the traded NFT’s Core Vault)</p>
+                                    </div>
+
+                                    <div className="text-xs text-slate-400 flex justify-between">
+                                        <span>Total Royalty</span>
+                                        <span className={totalRoyaltyBps > 10000 ? "text-red-400" : "text-slate-200"}>
+                                            {totalRoyaltyBps / 100}%
+                                        </span>
                                     </div>
                                 </div>
                             </div>
@@ -313,6 +340,14 @@ export default function CreatePage() {
                                     <div className="flex justify-between text-sm">
                                         <span className="text-slate-400">Creator Royalty</span>
                                         <span className="text-white">{config.creatorRoyaltyBps / 100}%</span>
+                                    </div>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-slate-400">Core Vault Royalty</span>
+                                        <span className="text-white">{config.vaultRoyaltyBps / 100}%</span>
+                                    </div>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-slate-400">Total Royalty</span>
+                                        <span className="text-white">{totalRoyaltyBps / 100}%</span>
                                     </div>
                                     <div className="flex justify-between text-sm">
                                         <span className="text-slate-400">Redeemable</span>

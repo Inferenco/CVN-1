@@ -241,4 +241,17 @@ module cvn1_vault::vault_ops {
             option::destroy_none(delete_ref_opt);
         };
     }
+
+    // ============================================
+    // Entry Functions - Distribute Royalties
+    // ============================================
+
+    /// Distribute royalties to the core vault
+    public entry fun distribute_royalties(
+        caller: &signer,
+        collection_addr: address,
+        fa_addr: address,
+    ) {
+        vault_core::distribute_royalties(caller, collection_addr, fa_addr);
+    }
 }

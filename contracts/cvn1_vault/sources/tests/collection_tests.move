@@ -36,7 +36,6 @@ module cvn1_vault::collection_tests {
             0,    // free mint
             @0x0, // no mint currency
             vector::empty(),
-            @0x123,
             0  // max_supply: 0 = unlimited
         );
         
@@ -69,7 +68,6 @@ module cvn1_vault::collection_tests {
             0,     // price
             @0x0,  // currency
             vector::empty(),
-            @0x123,
             0
         );
     }
@@ -85,7 +83,6 @@ module cvn1_vault::collection_tests {
             utf8(b"https://example.com"),
             250, 250, 0, 0, @0x0,
             vector::empty(),
-            @0x123,
             0
         );
         
@@ -97,7 +94,6 @@ module cvn1_vault::collection_tests {
             utf8(b"https://different.com"),
             500, 500, 0, 0, @0x0,
             vector::empty(),
-            @0x123,
             0
         );
     }
@@ -115,7 +111,6 @@ module cvn1_vault::collection_tests {
             10000, // 100% of mint to vault
             0, @0x0,
             vector::empty(),
-            @0x123,
             0
         );
         
@@ -139,7 +134,6 @@ module cvn1_vault::collection_tests {
             utf8(b"https://example.com"),
             250, 250, 0, 0, @0x0,
             allowed,
-            @0x123,
             0
         );
         
@@ -162,7 +156,6 @@ module cvn1_vault::collection_tests {
             utf8(b"https://example.com"),
             0, 0, 0, 0, @0x0, // all zeros = no royalties, free mint
             vector::empty(),
-            @0x123,
             0
         );
         
@@ -189,7 +182,6 @@ module cvn1_vault::collection_tests {
             10001, // 100.01% - invalid!
             0, @0x0,
             vector::empty(),
-            @0x123,
             0
         );
     }
@@ -207,7 +199,6 @@ module cvn1_vault::collection_tests {
             1000000, // 1 unit price
             @0xABC, // some FA address
             vector::empty(),
-            @0x123,
             0
         );
         
@@ -233,7 +224,6 @@ module cvn1_vault::collection_tests {
             utf8(b"https://example.com"),
             250, 250, 0, 0, @0x0,
             vector::empty(),
-            @0x123,
             100  // max_supply = 100
         );
         
@@ -260,7 +250,6 @@ module cvn1_vault::collection_tests {
             utf8(b"https://example.com"),
             250, 250, 0, 0, @0x0,
             vector::empty(),
-            @0x123,
             0  // max_supply = 0 (unlimited)
         );
         
@@ -294,7 +283,6 @@ module cvn1_vault::collection_tests {
             utf8(b"https://example.com"),
             250, 250, 0, 0, @0x0,
             vector::empty(),
-            @0x123,
             1  // max_supply = 1
         );
         
@@ -319,7 +307,6 @@ module cvn1_vault::collection_tests {
             utf8(b"https://example.com"),
             250, 250, 0, 0, @0x0,
             vector::empty(),
-            @0x123,
             1000000  // 1 million max supply
         );
         

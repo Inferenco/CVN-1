@@ -43,6 +43,17 @@ module cvn1_vault::vault_events {
     }
 
     #[event]
+    struct RoyaltySweptToCore has drop, store {
+        nft_object_addr: address,
+        fa_type: address,
+        gross_amount: u64,
+        creator_cut: u64,
+        core_vault_cut: u64,
+        escrow_addr: address,
+        sweeper: address,
+    }
+
+    #[event]
     struct RewardsClaimed has drop, store {
         nft_object_addr: address,
         claimer: address,
@@ -114,6 +125,27 @@ module cvn1_vault::vault_events {
             creator_cut,
             vault_cut,
             seller_net,
+        });
+    }
+
+    /// Emit a RoyaltySweptToCore event
+    public fun emit_royalty_swept(
+        nft_object_addr: address,
+        fa_type: address,
+        gross_amount: u64,
+        creator_cut: u64,
+        core_vault_cut: u64,
+        escrow_addr: address,
+        sweeper: address,
+    ) {
+        event::emit(RoyaltySweptToCore {
+            nft_object_addr,
+            fa_type,
+            gross_amount,
+            creator_cut,
+            core_vault_cut,
+            escrow_addr,
+            sweeper,
         });
     }
 

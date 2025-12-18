@@ -1,14 +1,15 @@
-# CVN-1 Marketplace Integration Guide (v5)
+# CVN-1 Marketplace Integration Guide (v6)
 
 > How marketplaces can support CVN-1 vaulted NFTs with framework royalties.
 
 ## Overview
 
-CVN-1 v5 uses **Cedra Framework royalties** for automatic enforcement:
+CVN-1 v6 uses **Cedra Framework royalties** with a per-NFT escrow payee and a permissionless sweep into the NFT’s Core Vault:
 
-- **Creator Royalties** — Enforced automatically via `cedra_token_objects::royalty`
-- **Vaults** — Receive value from minting, staking, and direct deposits
-- **No Custom Settlement** — Standard Cedra NFT sales work out of the box
+- **Royalties** — Discovered via `cedra_token_objects::royalty`
+- **Royalty Escrow** — Token-level royalty payee is a per-NFT escrow address
+- **Core Vault Funding** — Anyone can sweep escrow balance into creator payout + NFT Core Vault
+- **No Custom Settlement Required** — Standard Cedra NFT sales still work out of the box
 
 ## Why Integrate CVN-1?
 
@@ -17,13 +18,13 @@ CVN-1 v5 uses **Cedra Framework royalties** for automatic enforcement:
 - **Community Trust** — Show users you respect creator economics
 - **Standard API** — One integration covers all CVN-1 collections
 
-## v5 Changes from v4
+## v6 Changes from v5
 
-| v4 | v5 |
+| v5 | v6 |
 |----|-----|
-| Custom `settle_sale_with_vault_royalty` | Standard transfer + framework royalties |
-| Vault receives % of sales | Vault receives value from other sources |
-| Custom compliance tracking | Framework royalty enforcement |
+| Creator-only royalty payee | Per-NFT escrow royalty payee |
+| `vault_royalty_bps` ignored | `vault_royalty_bps` funds Core Vault (via sweep) |
+| No secondary-sale vault funding | Permissionless sweep to Core Vault |
 
 ## Integration Flow
 
@@ -35,15 +36,15 @@ CVN-1 v5 uses **Cedra Framework royalties** for automatic enforcement:
 │  1. Buyer purchases NFT for 100 CEDRA                           │
 │     ↓                                                            │
 │  2. Marketplace discovers royalty via framework API              │
-│     • Calls royalty::get(collection_or_token)                   │
+│     • Prefer token royalty: royalty::get<Token>(nft)            │
 │     ↓                                                            │
 │  3. Standard settlement:                                         │
-│     • Creator gets 5 CEDRA (5% royalty - framework enforced)    │
-│     • Seller gets 95 CEDRA (net proceeds)                       │
+│     • Royalties paid to per-NFT escrow (token payee_address)     │
+│     • Seller gets net proceeds                                   │
 │     • NFT transfers to buyer                                    │
-│                                                                  │
-│  CVN-1 vaults are NOT funded from secondary sales.              │
-│  Vaults receive value from: minting, staking, direct deposits   │
+│     ↓                                                            │
+│  4. Optional “instant”: marketplace calls sweep entry function   │
+│     • Splits escrowed royalties → creator payout + Core Vault    │
 │                                                                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -96,20 +97,19 @@ async function getListingInfo(nftAddr: string) {
 }
 ```
 
-## Step 3: Get Collection Royalty
+## Step 3: Get Token/Collection Royalty
 
 Use Cedra's framework royalty API to discover royalties:
 
 ```typescript
 import { royalty } from "@cedra-labs/ts-sdk";
 
-async function getCollectionRoyalties(collectionAddr: string) {
-  // Get royalty from framework
+async function getTokenRoyalties(nftAddr: string) {
   const royaltyInfo = await cedra.view({
     payload: {
       function: "0x4::royalty::get",
-      typeArguments: ["0x4::collection::Collection"],
-      functionArguments: [collectionAddr],
+      typeArguments: ["0x4::token::Token"],
+      functionArguments: [nftAddr],
     },
   });
 
@@ -135,7 +135,7 @@ async function getCVN1Config(collectionAddr: string) {
 
   return {
     creatorRoyaltyBps: Number(result[0]),
-    mintVaultBps: Number(result[1]),  // Note: vaultRoyaltyBps removed in v5
+    vaultRoyaltyBps: Number(result[1]),
     allowedAssets: result[2] as string[],
     creatorPayoutAddr: result[3] as string,
   };
@@ -180,7 +180,36 @@ async function completeSale(
 
 > **Note:** The specific royalty enforcement mechanism depends on your marketplace implementation and how Cedra's framework royalties are integrated. Consult Cedra documentation for the latest patterns.
 
-## Step 5: Display Vault Value
+## Step 5 (Optional): Sweep Royalties Into Core Vault (“Instant”)
+
+If you want vault funding to happen immediately after settlement, call the sweep entry:
+
+```typescript
+async function sweepRoyaltiesToCoreVault(
+  sweeper: Account,
+  nftAddr: string,
+  faMetadataAddr: string,
+) {
+  const txn = await cedra.transaction.build.simple({
+    sender: sweeper.accountAddress,
+    data: {
+      function: `${CVN1_ADDRESS}::vault_ops::sweep_royalty_to_core_vault`,
+      typeArguments: [],
+      functionArguments: [nftAddr, faMetadataAddr],
+    },
+  });
+
+  const result = await cedra.signAndSubmitTransaction({
+    signer: sweeper,
+    transaction: txn,
+  });
+  await cedra.waitForTransaction({ transactionHash: result.hash });
+}
+```
+
+If you don’t call this, a permissionless sweeper (like `royalty_sweeper/`) can do it near-real-time.
+
+## Step 6: Display Vault Value
 
 Show vault contents as additional NFT value:
 
@@ -254,22 +283,19 @@ async function getTotalVaultValue(nftAddr: string): Promise<string> {
 | `EVAULT_NOT_FOUND` | 8 | Not a CVN-1 NFT, no vault display needed |
 | `ECONFIG_NOT_FOUND` | 10 | Collection config missing |
 
-## Updated Checklist for v5
+## Updated Checklist for v6
 
 - [ ] Detect CVN-1 NFTs via `vault_exists`
 - [ ] Display dual vault balances on listings
-- [ ] Show creator royalty (via framework API)
-- [ ] Use standard transfer (framework enforces royalties)
+- [ ] Show creator + Core Vault royalty bps (via `get_vault_config`)
+- [ ] Use standard transfer + framework royalties (pay to token `payee_address`)
+- [ ] Optionally call `sweep_royalty_to_core_vault` post-settlement for “instant”
 - [ ] Display total vault value as floor price indicator
 - [ ] Handle non-CVN-1 NFTs gracefully
 
-## Removed from v5
+## Legacy Notes
 
-The following are **no longer used**:
-
-- `settle_sale_with_vault_royalty` — Removed, use framework royalties
-- `vault_royalty_bps` — No longer affects secondary sales
-- Compliance tracking — Framework handles enforcement
+- `settle_sale_with_vault_royalty` remains removed; v6 uses framework royalties + sweep instead.
 
 ## Support
 

@@ -6,18 +6,18 @@ This document explores the various ways creators can leverage the CVN-1 standard
 
 ---
 
-## Configuration Options Recap (v5)
+## Configuration Options Recap (v6)
 
 | Parameter | Range | Description |
 |-----------|-------|-------------|
 | `mint_vault_bps` | 0-10000 | % of mint price seeded into Core Vault |
 | `mint_price` | 0+ | Cost to mint (in smallest FA units) |
 | `creator_royalty_bps` | 0-10000 | % of secondary sales to creator (framework-enforced) |
-| `vault_royalty_bps` | N/A | **Unused in v5** - pass 0 |
+| `vault_royalty_bps` | 0-10000 | % of secondary-sale royalties routed into the NFT Core Vault (via sweep) |
 | `allowed_assets` | addresses | Whitelist of depositable tokens |
 | `max_supply` | 0+ | Maximum mintable (0 = unlimited) |
 
-> **v5 Note:** Vaults no longer receive % of secondary sales. Vaults are funded via mint seeding, direct deposits, and integrations.
+> **v6 Note:** Secondary-sale royalties are paid to a per-NFT escrow (framework royalty payee), then permissionlessly swept into creator payout + the NFT’s Core Vault.
 
 ---
 
@@ -261,7 +261,7 @@ is_redeemable:     true
 
 ---
 
-## Configuration Matrix (v5)
+## Configuration Matrix (v6)
 
 | Use Case | mint_vault_bps | creator_royalty | is_redeemable | allowed_assets |
 |----------|----------------|-----------------|---------------|----------------|
@@ -308,7 +308,7 @@ Document exactly what happens at mint:
 
 ---
 
-## Example: Complete Collection Setup (v5)
+## Example: Complete Collection Setup (v6)
 
 ```move
 init_collection_config(
@@ -317,7 +317,7 @@ init_collection_config(
     "Dragons with treasure hoards",      // description
     "https://dragons.io/collection",     // uri
     500,                                 // 5% creator royalty (framework-enforced)
-    0,                                   // vault_royalty (unused in v5)
+    0,                                   // 0% core vault royalty (optional in v6)
     5000,                                // 50% of mint → Core Vault
     100_000_000,                         // 100 CEDRA mint price
     @cedra_fa_address,                   // pay in CEDRA
